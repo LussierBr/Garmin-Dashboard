@@ -54,20 +54,44 @@ RAW_COLUMNS = [
     "sleep_score", "sleep_hours", "deep_hours", "light_hours", "rem_hours", "awake_hours",
     "bedtime_hour",
 ]
+ACTIVITY_COLUMNS = [
+    "steps", "distance_km", "active_kcal", "resting_hr", "min_hr", "max_hr",
+    "avg_stress", "max_stress", "high_stress_min", "body_battery_high", "body_battery_low",
+]
 
 
 def load_daily() -> tuple[pd.DataFrame, str]:
-    """Return (daily table, source label). Prefers real cached Garmin data."""
-    if REAL_CSV.exists():
-        path, source = REAL_CSV, "Garmin Connect"
-    elif SAMPLE_CSV.exists():
-        path, source = SAMPLE_CSV, "sample data"
-    else:
-        from make_sample_data import write_sample  # lazy: only when nothing exists
-        write_sample(SAMPLE_CSV)
-        path, source = SAMPLE_CSV, "sample data"
+    """Return (daily table, source label).
 
-    df = pd.read_csv(path, parse_dates=["date"]).sort_values("date")
+    Order: MongoDB (when MONGODB_URI is set, e.g. the deployed app), then the
+    local CSV from fetch_garmin.py, then synthetic sample data.
+    """
+    from . import store
+
+    df = None
+    if store.mongo_uri():
+        df = store.read_daily()
+        source = "Garmin Connect (MongoDB)"
+        if df.empty:
+            raise RuntimeError("MongoDB is connected but the daily collection is empty. Run fetch_garmin.py --mongo once.")
+    elif REAL_CSV.exists():
+        df, source = pd.read_csv(REAL_CSV), "Garmin Connect"
+    else:
+        if not SAMPLE_CSV.exists():
+            from make_sample_data import write_sample  # lazy: only when nothing exists
+            write_sample(SAMPLE_CSV)
+        df, source = pd.read_csv(SAMPLE_CSV), "sample data"
+
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date")
+    if "partial_day" in df:
+        # A day fetched before it ended has incomplete activity totals; keep only its sleep (last night).
+        partial = df.pop("partial_day").fillna(False).astype(bool)
+        df.loc[partial, [c for c in ACTIVITY_COLUMNS if c in df]] = pd.NA
+    for col in RAW_COLUMNS[1:]:  # Mongo may omit all-null fields; keep a stable schema
+        if col not in df:
+            df[col] = pd.NA
+        df[col] = pd.to_numeric(df[col], errors="coerce")
     # Reindex to a continuous calendar so shifting by one row means one day.
     full = pd.date_range(df["date"].min(), df["date"].max(), freq="D")
     df = df.set_index("date").reindex(full).rename_axis("date").reset_index()

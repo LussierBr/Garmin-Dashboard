@@ -1,6 +1,7 @@
 """Brody's Garmin health dashboard.  Run:  streamlit run app.py"""
 from __future__ import annotations
 
+import hmac
 import os
 
 import numpy as np
@@ -14,13 +15,49 @@ from garmin_dash.predict import EXTRA_FEATURES, fit
 
 st.set_page_config(page_title="Garmin Health", page_icon="❤️", layout="wide")
 
+SECRET_KEYS = ("MONGODB_URI", "MONGODB_DB", "ANTHROPIC_API_KEY", "CLAUDE_MODEL", "APP_PASSWORD")
 
-@st.cache_data(ttl=600)
+
+def load_secrets_into_env() -> None:
+    """Streamlit secrets (hosting dashboard or .streamlit/secrets.toml) -> env vars the modules read."""
+    try:
+        for key in SECRET_KEYS:
+            if key in st.secrets and not os.getenv(key):
+                os.environ[key] = str(st.secrets[key])
+    except Exception:  # no secrets file locally is fine
+        pass
+
+
+def require_password() -> None:
+    """If APP_PASSWORD is set, viewers must enter it before seeing anything."""
+    expected = os.getenv("APP_PASSWORD")
+    if not expected or st.session_state.get("authed"):
+        return
+    st.title("Garmin Health")
+    with st.form("login"):
+        pw = st.text_input("Password", type="password")
+        if st.form_submit_button("View dashboard"):
+            if hmac.compare_digest(pw.encode(), expected.encode()):
+                st.session_state.authed = True
+                st.rerun()
+            st.error("That password isn't right.")
+    st.stop()
+
+
+load_secrets_into_env()
+require_password()
+
+
+@st.cache_data(ttl=600, show_spinner="Loading your Garmin data...")
 def get_data():
     return load_daily()
 
 
-df, source = get_data()
+try:
+    df, source = get_data()
+except Exception as e:
+    st.error(f"Couldn't load the data: {e}")
+    st.stop()
 metric_keys = available_metrics(df)
 
 st.title("Garmin Health")

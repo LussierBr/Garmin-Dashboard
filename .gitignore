@@ -224,3 +224,4 @@ data/raw/
 data/garmin_daily.csv
 .env
 .garminconnect/
+.streamlit/secrets.toml

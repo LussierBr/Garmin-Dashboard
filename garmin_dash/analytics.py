@@ -120,6 +120,6 @@ def insights(df: pd.DataFrame) -> list[str]:
             direction = "down" if last < first else "up"
             out.append(f"Resting heart rate is **{direction} {abs(last - first):.1f} bpm** comparing your first and latest 30 days ({first:.1f} → {last:.1f}).")
 
-    cur, longest = streaks(df["steps"] >= 10000)
+    cur, longest = streaks(df["steps"].dropna() >= 10000)  # skip unworn / unfinished days
     out.append(f"10k-step streak: **{cur} day{'s' if cur != 1 else ''}** right now, longest **{longest}**.")
     return out

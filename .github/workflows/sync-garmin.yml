@@ -1,0 +1,39 @@
+name: Sync Garmin data to MongoDB
+
+on:
+  schedule:
+    - cron: "0 11 * * *" # daily at 11:00 UTC (early morning in North America, after the night's sleep is recorded)
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days back to re-fetch"
+        default: "3"
+
+concurrency:
+  group: garmin-sync # never run two syncs at once; they share one Garmin session
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install "garminconnect>=0.3.17" "pymongo>=4.6" "pandas>=2.2"
+
+      - name: Fetch from Garmin and upload
+        env:
+          # Read-write MongoDB user. The Garmin session itself is stored in MongoDB by
+          # `python fetch_garmin.py --mongo` run once locally, so no Garmin password is needed here.
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          DAYS: ${{ github.event.inputs.days || '3' }}
+        run: python fetch_garmin.py --mongo --days "$DAYS"

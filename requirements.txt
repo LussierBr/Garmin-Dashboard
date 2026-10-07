@@ -5,3 +5,4 @@ scipy>=1.11
 plotly>=5.24
 anthropic>=1.0
 garminconnect>=0.3.17
+pymongo>=4.6
