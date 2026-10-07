@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Personal health data and secrets never go in git
+data/raw/
+data/garmin_daily.csv
+.env
+.garminconnect/
+.streamlit/secrets.toml
